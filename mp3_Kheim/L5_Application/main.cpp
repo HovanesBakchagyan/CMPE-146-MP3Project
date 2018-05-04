@@ -49,7 +49,7 @@
 
 SemaphoreHandle_t scrollDown, Select;
 QueueHandle_t selectedFilename;
-char SongList[200][100] = { NULL };
+char SongList[200][100] = {NULL};
 DIR Music;
 
 /*Display Macros*/
@@ -421,8 +421,8 @@ SemaphoreHandle_t resumeButtonSemaphore = NULL;
 SemaphoreHandle_t displayScreenSemaphore = NULL;
 
 uint8_t currentSong = 0;
-uint8_t totalSong = 15;
-uint8_t currentVolumn = 100;       //0 is max, fffe is muted
+//uint8_t totalSong = 15;
+uint8_t currentVolumn = 50;       //0 is max, fffe is muted
 uint8_t volumnDisplay = 9;
 bool pausedFlag = true;         // the pausedFlage is used to display the lcd status
 bool reStartFlag = false;
@@ -475,8 +475,11 @@ public:
         //setVolum(100);
         pausedFlag = false;
         long startPlay = 0;
+
         scheduler_task *Musictask = scheduler_task::getTaskPtrByName("musicPlayer");
         vTaskResume(Musictask->getTaskHandle());
+        //u0_dbg_printf("Continue Current Song\n");
+
         xSemaphoreGiveFromISR(resumeButtonSemaphore, &startPlay);
         if (startPlay) {
             portYIELD_FROM_ISR(startPlay);
@@ -486,11 +489,14 @@ public:
     {
         //  PauseMusic();
         PauseMusic();
+//        u0_dbg_printf("We just paused the song\n");
         pausedFlag = true;
+//        u0_dbg_printf("Set Pause flag as true\n");
         reStartFlag = true;
+//        u0_dbg_printf("Set restart flag as true\n");
         currentSong++;
-
-        //        startMusic();
+//        u0_dbg_printf("Incremented to next song\n");
+                //startMusic();
 
     }
 
@@ -518,6 +524,7 @@ public:
             portYIELD_FROM_ISR(volumnUpSem);
         }
     }
+
     void volumnDown()
     {
         printf("Current volumn is: %d\n", currentVolumn);
@@ -592,7 +599,8 @@ public:
         }
         else if(SW.getSwitch(3))
         {
-            volumnUp();
+            //volumnUp();
+            selectNextSong();
         }
         else if(SW.getSwitch(4)) {
             startMusic();
@@ -779,10 +787,11 @@ public:
 
     bool run(void *p)
     {
-        const char *dirPath = "1:Music";
-        if (0 == f_opendir(&Music, dirPath)) {
-            printf("Invalid directory: |%s| (Error 0)\n", dirPath);
-        }
+//        const char *dirPath = "1:Music";
+//        if (0 == f_opendir(&Music, dirPath)) {
+//            printf("Success Reading Directory: |%s| (Success 0)\n", dirPath);
+//        }
+
         if (xSemaphoreTake(resumeButtonSemaphore, portMAX_DELAY)) {
 
             long int lSize;
@@ -797,7 +806,7 @@ public:
             //char* fileLoc = (char*) malloc(strlen(prefix) + strlen(songName) + 1);
             //strcpy(fileLoc, prefix);
             //strcat(fileLoc, songName);
-            //u0_dbg_printf("%s\n",songName);
+            u0_dbg_printf("Current song playing: %s\n",songName);
             mpFile = fopen(songName, "r");
 
             if (!mpFile)        // to make sure the file is open success
@@ -805,6 +814,10 @@ public:
                 fputs("File error", stderr);
                 exit(1);
             }
+            else {
+                u0_dbg_printf("Success Reading File");
+            }
+
 
             fseek(mpFile, 0, SEEK_END);    // obtain file size:
             lSize = ftell(mpFile);     // get the pointer of the file
@@ -815,12 +828,12 @@ public:
                 exit(1);
             }
             while (mpFile) {
-//                if( reStartFlag == true){
-//                    u0_dbg_printf(" the data send to mp3 is true \n");
-//                    vTaskDelay(1000);
-//                    reStartFlag = false;
-//                    break;
-//                }
+                if( reStartFlag){
+                   // u0_dbg_printf(" the data send to mp3 is true \n");
+                    vTaskDelay(1000);
+                    reStartFlag = false;
+                    break;
+                }
                 for (i = 0; i < lSize; i++) {
                     fseek(mpFile, 512 * i, SEEK_SET);     //re direction the reading file
                     int readResult = fread(mp3_buffer, 1, 512, mpFile);    // since cpu only can store at most 512k
@@ -855,7 +868,7 @@ public:
 
             // terminate
             fclose(mpFile);
-            free(mp3_buffer);
+//            free(mp3_buffer);
         }
 
         return true;
