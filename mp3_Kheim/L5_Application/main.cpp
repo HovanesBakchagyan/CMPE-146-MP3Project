@@ -56,13 +56,38 @@ using namespace std;
 #define MAX_SONGS           100
 #define MAX_SONG_LENGTH     13
 
+/*Display Macros*/
+#define clearLCD()     U2_Tx('C');/*Send CL to display to clear the display*/\
+                       U2_Tx('L');
+#define setBacklightON()    U2_Tx('B');/*Send BL to Display*/  \
+                            U2_Tx('L');                        \
+                            U2_Tx(0x01);
+#define sendData()         U2_Tx('M');/* Send MDT for single byte data send */ \
+                           U2_Tx('D'); \
+                           U2_Tx('T');
+#define setCursorON()    U2_Tx('C');/*Send BL to Display*/  \
+                         U2_Tx('S');                        \
+                         U2_Tx(0x01);
+#define setCursorOFF()    U2_Tx('C');/*Send BL to Display*/  \
+                          U2_Tx('S');                        \
+                          U2_Tx(0x00);
+#define secondLine()      U2_Tx('T');\
+                          U2_Tx('R');\
+                          U2_Tx('T');
+#define stopText()    U2_Tx(0);
+#define sendText()     U2_Tx('T');\
+                          U2_Tx('T');
+#define setPosition() U2_Tx('T');\
+                       U2_Tx('P');
+
 SemaphoreHandle_t scrollDown, Select;
 QueueHandle_t selectedFilename;
 char musicList[200][100] = { NULL };
 //vector<char*> musicList;
+
 int numberOfSongs = 0;
 uint8_t currentSong = 0;
-//uint8_t totalSong = 15;
+int checkSong =0;
 uint8_t currentVolumn = 50;       //0 is max, fffe is muted
 uint8_t volumnDisplay = 9;
 bool pausedFlag = true;         // the pausedFlage is used to display the lcd status
@@ -78,38 +103,6 @@ typedef enum {
 } sharedHandleId_t;
 
 QueueHandle_t mysongQueue = xQueueCreate(1, sizeof(int));
-/*Display Macros*/
-#define clearLCD()     U2_Tx('C');/*Send CL to display to clear the display*/\
-                       U2_Tx('L');
-
-#define setBacklightON()    U2_Tx('B');/*Send BL to Display*/  \
-                            U2_Tx('L');                        \
-                            U2_Tx(0x01);
-
-#define sendData()         U2_Tx('M');/* Send MDT for single byte data send */ \
-                           U2_Tx('D'); \
-                           U2_Tx('T');
-
-#define setCursorON()    U2_Tx('C');/*Send BL to Display*/  \
-                         U2_Tx('S');                        \
-                         U2_Tx(0x01);
-
-#define setCursorOFF()    U2_Tx('C');/*Send BL to Display*/  \
-                          U2_Tx('S');                        \
-                          U2_Tx(0x00);
-
-#define secondLine()      U2_Tx('T');\
-                          U2_Tx('R');\
-                          U2_Tx('T');
-//U2_Tx(0x01);
-
-#define stopText()    U2_Tx(0);
-
-#define sendText()     U2_Tx('T');\
-                          U2_Tx('T');
-
-#define setPosition() U2_Tx('T');\
-                       U2_Tx('P');
 
 bool getSongNames()
 {
@@ -145,7 +138,7 @@ bool getSongNames()
         //u0_dbg_printf("%s\n", musicList[order]);
         // LFN names tend to increase memory requirements for output str, enable with caution
         order++;
-        printf("\n");
+        u0_dbg_printf("%i\n", numberOfSongs);
     }
     f_closedir(&Dir);
     return true;
@@ -154,11 +147,14 @@ bool getSongNames()
 
 class uart_display: public scheduler_task {
 public:
+
     uart_display(uint8_t priority) :
             scheduler_task("Display", 2000, priority)
     {
     }
-
+    typedef enum {
+            flashFirst, flashSecond, goingUp, goingDown,
+        } displayState;
     bool U2_init(int baud)
     {
         //Turn on PCONP for UART2
@@ -269,34 +265,33 @@ public:
         sendText()
         ;
         U2_Tx(c);
-        U2_Tx(0);
+        stopText()
+        ;
     }
 
     void sendLine(char* song)
     {
-        sendText()
-        ;
+        char listend[13] = { "End Of List " };
+
         if (song[0] != NULL && song[1] != NULL) {
+            sendText()
+            ;
             for (int i = 0; i < 16; i++) {
 
                 if (song[i] != NULL) {
-                    //sendData()
-                    //                ;
-                    //vTaskDelay(4);
                     U2_Tx(song[i]); //send values in array one at a time
-                    //                u0_dbg_printf("%c\n", songPointer0[i]);
-                    //sendChar(song[i]);
                 }
                 else {
                     break;
                 }
             }
+            stopText()
+            ;
         }
         else {
-            sendChar(' ');
-        }
+            sendLine(&listend[0]);
 
-        U2_Tx(0);
+        }
 
     }
 
@@ -306,23 +301,20 @@ public:
         ;
         for (int i = 0; i < 16; i++) {
             if (song[i] != NULL) {
-                //sendData()
-                //                ;
                 vTaskDelay(100);
                 U2_Tx(song[i]); //send values in array one at a time
-                //                u0_dbg_printf("%c\n", songPointer0[i]);
-                //sendChar(song[i]);
             }
             else {
                 break;
             }
         }
-        U2_Tx(0);
-
+        stopText()
+        ;
     }
 
     bool run(void *p)
     {
+        // char* endofList[12] = { "End Of List" };
         //Initial the baud rate to 9600 bps
         U2_init(9600); //is the baud rate for the display 9600?
         vTaskDelay(500);
@@ -330,14 +322,11 @@ public:
         ;
         char* songPointer0;
         char* songPointer1;
-        int songSelector = 0;
+//        int songSelector = 0;
         int listNum = currentSong;
-int count = 0;
-//        char c[12] = "Hello world"; //for testing display
+//        int count = 0;
+        displayState state = flashFirst;
 
-//        printf("Start to Transmit : \n");
-
-//        u0_dbg_printf("Initializing LCD Display...\n");
         vTaskDelay(5);
 
         clearLCD()
@@ -353,84 +342,125 @@ int count = 0;
 
         vTaskDelay(10);
 
-//        u0_dbg_printf("Attempting to Read from SD card...");
-
         songPointer0 = &musicList[listNum][0];
-        sendLine(songPointer0);
+//        sendLine(songPointer0);
         listNum++;
-//        u0_dbg_printf("%s\n", songPointer0);
+
         songPointer1 = &musicList[listNum][0];
-        sendLine(songPointer1);
-        //listNum++;
-//        u0_dbg_printf("%s\n", songPointer1);
-        while (1) {
-            while (count < 2 ) {
+//        sendLine(songPointer1);
 
-                songSelector = currentSong%2;
-                switch (songSelector) {
-                    case 0:
-                        clearFirstLine();
-                        setCursorPosition(0, 0);
-                        slowStepLine(musicList[currentSong]);
-                        //u0_dbg_printf("we are stepping the first song\n");
-//                        if (xSemaphoreTake(Select, 0)) {
-                        //  xQueueSend(/*Handle Name*/,songPointer0,0);
+//        bool step = true;
+        while(1) {
+            switch (state) {
+                       case flashFirst:
+           //                int temp = currentSong;
+                           clearFirstLine();
+                           setCursorPosition(0, 0);
+                           slowStepLine(musicList[currentSong]);
+//                           u0_dbg_printf("stepping first song\n");
+//                           vTaskDelay(1000);
+                           if ((currentSong % 2 == 1) && (currentSong > checkSong)) {
+                               state = flashSecond;
+                               checkSong ++;
+                           }
+                           else if ((currentSong % 2 == 1) && (currentSong < checkSong)) {
+                               state = goingUp;
+                               checkSong --;
+                           }
+                           break;
+                       case flashSecond:
+           //                int temp = currentSong;
+                           clearSecondLine();
+                           setCursorPosition(0, 1);
+                           slowStepLine(musicList[currentSong]);
+//                           u0_dbg_printf("stepping second song\n");
+                           if ((currentSong % 2 == 0) && (currentSong > checkSong)) {
+                               state = goingDown;
+                               checkSong = currentSong;
+                           }
+                           else if ((currentSong % 2 == 0) && (currentSong < checkSong)) {
+                               state = flashFirst;
+                               checkSong--;
+                           }
+                           break;
+                       case goingDown:
+                           if (currentSong < numberOfSongs) {
+                               listNum = currentSong;
+                               songPointer0 = &musicList[listNum][0];
+                               sendLine(songPointer0);
+                               u0_dbg_printf("%s\n", songPointer0);
+                           }
+                           listNum++;
+                           songPointer1 = &musicList[listNum][0];
+                           sendLine(songPointer1);
+                           u0_dbg_printf("%s\n", songPointer1);
+                           state = flashFirst;
+                           break;
+
+                       case goingUp:
+                           if (currentSong > 0) {
+                               listNum = currentSong - 1;
+                               songPointer0 = &musicList[listNum][0];
+                               sendLine(songPointer0);
+                               u0_dbg_printf("%s\n", songPointer0);
+                           }
+                           listNum++;
+                           songPointer1 = &musicList[listNum][0];
+                           sendLine(songPointer1);
+                           u0_dbg_printf("%s\n", songPointer1);
+                           state = flashSecond;
+
+                           break;
+
+                   }
+//            while (step) {
+//
+//                songSelector = currentSong % 2;
+//                switch (songSelector) {
+//                    case 0:
+//                        clearFirstLine();
+//                        setCursorPosition(0, 0);
+//
+//                        slowStepLine(musicList[currentSong]);
+//                        u0_dbg_printf("stepping first song\n");
+//                        vTaskDelay(1000);
+//                        break;
+//                    case 1:
+//                        clearSecondLine();
+//                        setCursorPosition(0, 1);
+//                        slowStepLine(musicList[currentSong]);
+//                        u0_dbg_printf("stepping second song\n");
+//                        if ((currentSong % 3) == 2) {
+//                            step = false;
 //                        }
-                        break;
-                    case 1:
-                        clearSecondLine();
-                        setCursorPosition(0, 1);
-                        slowStepLine(musicList[currentSong]);
-                        //u0_dbg_printf("we are stepping the second song\n");
-//                        if (/*xSemaphoreTake(Select, 0)*/) {
-                        //  xQueueSend(/*Handle Name*/,songPointer1,0);
-//                        }
+//                        vTaskDelay(1000);
+//                        break;
+//                    default:
+//                        break;
+//                }
+//            }
+//            if (currentSong < numberOfSongs) {
+//                listNum = currentSong;
+//                songPointer0 = &musicList[listNum][0];
+//                sendLine(songPointer0);
+//                u0_dbg_printf("%s\n", songPointer0);
+//
+//            }
+//            listNum++;
+//            songPointer1 = &musicList[listNum][0];
+//            sendLine(songPointer1);
+//            u0_dbg_printf("%s\n", songPointer1);
+//            step = true;
 
-                        break;
-                    default:
-
-                        break;
-                }
-            }
-            listNum =currentSong;
-            songPointer0 = &musicList[listNum][0];
-            sendLine(songPointer0);
-            u0_dbg_printf("%s\n", songPointer0);
-            listNum++;
-            songPointer1 = &musicList[listNum][0];
-            sendLine(songPointer1);
-            u0_dbg_printf("%s\n", songPointer1);
         }
         return -1;
 
     }
-};
-
-//void buttonScrollDown()
-//{
-//    u0_dbg_printf("Interrupt Detected. Port 0 pin 0");
-//    xSemaphoreGiveFromISR(scrollDown, NULL);
-//}
-//
-//void buttonScrollUp()
-//{
-//    u0_dbg_printf("Interrupt Detected. Port 0 pin 0");
-//    xSemaphoreGiveFromISR(scrollDown, NULL);
-//}
-//
-//void selectSong()
-//{
-//    u0_dbg_printf("Interrupt Detected. Port 0 pin X");
-//    xSemaphoreGiveFromISR(Select, NULL);
-//}
-
-//if(xSemaphoreTake(nextButton,portMAX_DELAY)){
-//    currentSong++;
-//}
+}
+;
 
 SemaphoreHandle_t resumeButtonSemaphore = NULL;
 SemaphoreHandle_t displayScreenSemaphore = NULL;
-
 
 class controlPanel: public scheduler_task {
 public:
@@ -506,9 +536,14 @@ public:
 //      scheduler_task *sendmusicTask = scheduler_task::getTaskPtrByName("sendMusicTask");
 //      vTaskSuspend(sendmusicTask->getTaskHandle());
 //    xQueueReset(getSharedObject(song_queue));
-
-        currentSong++;
-        u0_dbg_printf("current song inc\n");
+        if (currentSong < numberOfSongs) {
+            currentSong++;
+            u0_dbg_printf("current song inc\n");
+        }
+        else {
+            u0_dbg_printf("end of list\n");
+        }
+        vTaskDelay(200);
 //      vTaskResume(sendmusicTask->getTaskHandle());
 
 //u0_dbg_printf("current song number is %d\t in selectSong\n",currentSong);//Add by Khiem
@@ -530,7 +565,7 @@ public:
 //      reStartFlag = true;
 //      pausedFlag = true;
 //      PauseMusic();
-        if (currentSong <= 0) printf("Invalid Song");
+        if (currentSong <= 0) printf("Invalid Song\n");
         else
             currentSong--;
 
@@ -564,42 +599,7 @@ public:
 //            portYIELD_FROM_ISR(volumnDownSem);
 //        }
     }
-//
-//  void upDataSongNameList() {
-//      char* a = "music1.mp3";
-//      char* b = "music2.mp3";
-//      char* c = "music3.mp3";
-//      char* d = "music4.mp3";
-//      char* e = "music5.mp3";
-//      char* f = "music6.mp3";
-//      char *g = "music7.mp3";
-//      char* h = "music8.mp3";
-//      char* i = "music9.mp3";
-//      char* j = "music10.mp3";
-//      char* k = "music11.mp3";
-//      char* l = "music12.mp3";
-//      char* s = "music13.mp3";
-//      char* t = "music14.mp3";
-//      char* u = "music15.mp3";
-//      char* v = "music16.mp3";
-//      musicList.push_back(a);
-//      musicList.push_back(b);
-//      musicList.push_back(c);
-//      musicList.push_back(d);
-//      musicList.push_back(e);
-//      musicList.push_back(f);
-//      musicList.push_back(g);
-//      musicList.push_back(h);
-//      musicList.push_back(i);
-//      musicList.push_back(j);
-//      musicList.push_back(k);
-//      musicList.push_back(l);
-//      musicList.push_back(s);
-//      musicList.push_back(t);
-//      musicList.push_back(u);
-//      musicList.push_back(v);
-//
-//  }
+
     bool init(void)
     {
         //configure the pin p0.0. p0.1 as gpio
@@ -735,10 +735,10 @@ public:
 //          }
         else if((LPC_GPIO2->FIOPIN & (1 << 1)))
         {
-            u0_dbg_printf("Interrupt from port 2.1");
+//            u0_dbg_printf("Interrupt from port 2.1\n");
 //                  xSemaphoreGive(resumeButtonSemaphore);
 
-            selectPrevSong();
+//            selectPrevSong();
 
         }
         vTaskDelay(100);
@@ -746,333 +746,27 @@ public:
     }
 };
 
-//class mp3Project: public scheduler_task // this task in to produce the sensor value and then send it to queue
-//{
-//public:
-//  mp3Project(uint8_t priority) :
-//          scheduler_task("musicPlayer", 5000, priority) {
-//
-//  }
-//  bool init(void) {
-//      SPI0_Init();
-//      writeRegister(SCI_MODE, 0x0800);
-//      writeRegister(SCI_BASS, 0x7A00);
-//      writeRegister(SCI_CLOCKF, 0x2000);
-//      writeRegister(SCI_AUDATA, 0xAC45);
-//      writeRegister(SCI_VOL, 0x1010);
-//      //  writeRegister(SCI_AUDATA, 0xAC45);
-//      //   setClock(0x2000);
-//      setVolum(100);
-//      ssp0_set_max_clock(1);
-//      return true;
-//  }
-//  void SPI0_Init()        //done in lab lecture
-//  {
-//      LPC_SC->PCONP |= (1 << 21);     // SPI0 Power Enable
-//      LPC_SC->PCLKSEL1 &= ~(3 << 10); // Clear clock Bits
-//      LPC_SC->PCLKSEL1 |= (1 << 10); // 01: CLK / 1. ||  00: /4    || 10: /2
-//      // Select MISO, MOSI, and SCK pin-select functionality
-//      LPC_PINCON->PINSEL0 &= ~((3 << 30));                   // clear the sck0
-//      LPC_PINCON->PINSEL1 &= ~((3 << 2) | (3 << 4)); //  clear the miso0 and mosi0
-//      LPC_PINCON->PINSEL0 |= (2 << 30);       // set set the function for sck0
-//      LPC_PINCON->PINSEL1 |= ((2 << 2) | (2 << 4)); //and then set the function respectively
-//      LPC_SSP0->CR0 = 7;          // 8-bit mode
-//      LPC_SSP0->CR1 = (1 << 1);   // Enable SSP as Master
-//      LPC_SSP0->CPSR = 1;         // SCK speed = CPU / 1
-//      LPC_SSP0->CR1 &= ~(1 << 2); // to set the spi1 as master
-//      // gpio initlization, configure the pin as gpio first
-//      LPC_PINCON->PINSEL3 &= ~(3 << 12);      // set p1.22 as gpio
-//      LPC_PINCON->PINSEL3 &= ~(3 << 24);      // set p1.28 as gpio
-//      LPC_PINCON->PINSEL3 &= ~(3 << 28);      //set p1.30  as gpio
-//      LPC_PINCON->PINSEL3 &= ~(3 << 6);      //set p1.19  as gpio
-//      //   LPC_PINCON->PINSEL0 &= ~(3 << 0);           // this is for sd car, dont real need it
-//      LPC_GPIO1->FIODIR |= (1 << 22);   //set pin P1.22 as output -- CS signal
-//      LPC_GPIO1->FIODIR |= (1 << 28); //set pin P1.28 as output -- RESET signal
-//      LPC_GPIO1->FIODIR |= (1 << 30);  //set pin P1.30 as output -- DCS signal
-//      LPC_GPIO1->FIODIR &= ~(1 << 19); //set pin P1.19 as input -- DREQ signal
-//      LPC_GPIO1->FIOSET = (1 << 28);    //set pin P1.28 high initially
-//      LPC_GPIO1->FIOSET = (1 << 30);    //set pin P1.30 high initially
-//      LPC_GPIO1->FIOSET = (1 << 22);    //set pin P1.22 high initially
-//      // ssp0_set_max_clock(1);
-//  }
-//  uint8_t sendDataToRegister(uint8_t data) {
-//      LPC_SSP0->DR = data; //Send the data Out
-//      while (LPC_SSP0->SR & (1 << 4))
-//          ; // Wait until SSP is busy
-//      return LPC_SSP0->DR;
-//  }
-//  void setClock(uint16_t clockData) {
-//      writeRegister(SCI_CLOCKF, clockData);
-//  }
-//  bool dreqStatus() {
-//      if (LPC_GPIO1->FIOPIN & (1 << 19)) {
-//          return true;
-//      } else {
-//          return false;
-//      }
-//  }
-//  uint16_t readRegister(uint8_t readReg) {
-//      while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
-//          ; //0 = not ready, wait till ready
-//      setCS();      //Send Low on CS to enable VS1053, active low
-//      sendDataToRegister(0x3);         //Send Read Opcode
-//      sendDataToRegister(readReg);      //Send Address to read from
-//      char firstByte = sendDataToRegister(0x99);
-//      while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
-//          ;
-//      char secondByte = sendDataToRegister(0x98);
-//      while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
-//          ;
-//      resetCS();     //Send High on CS to disable VS1053
-//      uint16_t data = firstByte << 8;
-//      data = data | secondByte;
-//      return data;
-//  }
-//  // this function tells the music data can be transfer to the decoder
-//  void setDataCS() {
-//      ssp0_set_max_clock(1);
-//      LPC_GPIO1->FIOCLR |= (1 << 30);
-//  }
-//  //clean the data cs
-//  void resetDataCS() {
-//      LPC_GPIO1->FIOSET |= (1 << 30);
-//  }
-//  // this function tells that the chip select is select the decoder and sending the data
-//  void setCS() {
-//      // ssp0_set_max_clock(12);
-//      LPC_GPIO1->FIOCLR |= (1 << 22);
-//  }
-//  // this tells that the chip select is not been selected
-//  void resetCS() {
-//      LPC_GPIO1->FIOSET |= (1 << 22);
-//  }
-//  // when writing to the register, need to enable the CS for decoder
-//  void writeRegister(uint8_t address, uint16_t data) {
-//      uint8_t lowByteData = data & 0x00FF;
-//      uint8_t highByteData = data >> 8;
-//      // lowByteData = (uint8_t)data;        // to get the low byte of data
-//      // highByteData = (uint8_t)(data>>8);  //to get the high byte of data
-//      resetDataCS();          // set the pin to high
-//      setCS();             //enable the chip select, the cs is active low
-//      while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
-//          ;
-//      sendDataToRegister(0x02); //send the opcode fist, this is operation of write data
-//      sendDataToRegister(address);             // send the address
-//      sendDataToRegister(highByteData);
-//      sendDataToRegister(lowByteData);
-//      //setDataCS();
-//      while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
-//          ; // wait unitl the dreq is low
-//      resetCS();
-//  }
-//  void setVolum(uint8_t volumnData) {
-//      uint16_t volumn16Bit = (volumnData << 8) | volumnData;
-//      writeRegister(SCI_VOL, volumn16Bit);
-//  }
-//  void mp3_SDI_Write_32(char *data) {
-//      resetCS();       //disable CS
-//      setDataCS();     //enable DCS
-//      while (dreqStatus() == 0)
-//          ;  //wait until DREQ pin goes high
-//      //    ssp0_exchange_byte(0x00);
-//      for (int i = 0; i < 32; i++) {
-//          ssp0_exchange_byte(data[i]);
-//      }
-//      resetDataCS();    //disable DCS
-//  }
-//  bool updataSong() { // this is function use to updata song when user select next and prev song from the list
-////         uint8_t songNumberChange;//add by Khiem
-////        QueueHandle_t current_song_control=getSharedObject(song_queue);
-////            if(xQueueReceive(current_song_control, &songNumberChange,15))
-////            {
-////                currentSong=songNumberChange;
-////
-////            }
-//      return true;
-//  }
-//  bool run(void *p) {
-//
-//      //add by Khiem
-//
-//      //uint8_t songNumberChange;
-////        if (xSemaphoreTake(resumeButtonSemaphore, portMAX_DELAY))
-//       while (xQueueReceive(getSharedObject(song_queue), &currentSong,portMAX_DELAY))
-//
-//  {
-//          // currentSong=songNumberChange;
-//
-//
-//      {
-//          long int lSize;
-//          char mp3_buffer[512];
-//          FILE * mpFile;
-//          int i, y = 0;
-//          uint16_t volumnChange;
-//          QueueHandle_t volumControl = getSharedObject(volumnQueue);
-//
-//          char prefix[] = "1:";
-//          char* songName = musicList[currentSong];
-//          char* fileName = (char*) malloc(strlen(prefix) + strlen(songName) + 1);
-//          strcpy(fileName, prefix);
-//          strcat(fileName, songName);
-//
-//          mpFile = fopen(fileName, "r");
-////            if (!mpFile)        // to make sure the file is open success
-////            {
-////                fputs("File error", stderr);
-////                exit(1);
-////            }
-//
-//          fseek(mpFile, 0, SEEK_END);    // obtain file size:
-//          lSize = ftell(mpFile);     // get the pointer of the file
-//          rewind(mpFile);             // go the begining of the file
-//////
-////            if (mp3_buffer == NULL) {
-////                printf("mp3 data memory allocate fail");
-////                exit(1);
-////            }
-//
-//           u0_dbg_printf("mo dc file trong play %s\n",&mpFile);
-//          while (mpFile) {
-////                if( reStartFlag == true){
-////                    u0_dbg_printf(" the data send to mp3 is true \n");
-////                    vTaskDelay(1000);
-////                    reStartFlag = false;
-////                    break;
-////                }
-//
-//              for (i = 0; i < lSize; i++) {
-//                  fseek(mpFile, 512 * i, SEEK_SET); //re direction the reading file
-//                  int readResult = fread(mp3_buffer, 1, 512, mpFile); // since cpu only can store at most 512k
-//                  // vTaskDelay(100);
-//                  while (y < readResult) {
-//                      // u0_dbg_printf(" the data send to mp3 is %x \n", mp3_buffer[x]);
-//                      while (dreqStatus() == 0) {
-//                          if (xQueueReceive(volumControl, &volumnChange,15)) {
-//                              setVolum(volumnChange);
-//
-//                          }
-//
-//                      }
-//                      if (dreqStatus()) {
-//                          resetCS();
-//                          setDataCS();
-//                          for (int j = 0; j < 32; j++) {
-//                              ssp0_exchange_byte(mp3_buffer[y]);
-//                              //  u0_dbg_printf(" the data send to mp3 is %x \n", mp3_buffer[y]);
-//                              // vTaskDelay(100);
-//                              y++;
-//                          }
-//                          // u0_dbg_printf(" the data send to mp3 is %x \n", *mp3_buffer);
-//                          //  while(!(LPC_GPIO1->FIOPIN & (1 << 19)));
-//                          resetDataCS();
-//
-//                      }
-//                      vTaskDelay(0);
-//                      if (LPC_GPIO0->FIOPIN & 1<<0)
-//                                  {
-//                                      xSemaphoreTake(resumeButtonSemaphore, portMAX_DELAY);
-//                                      {   u0_dbg_printf("Interrupt from port 0.0");
-//                                      xQueueReset(getSharedObject(song_queue));
-//                                      currentSong++;
-//                                       xQueueSend(getSharedObject(song_queue), &currentSong,portMAX_DELAY);
-//                      //                  startMusic();
-//                                      }
-//                                  }
-//                  }
-//                  y = 0;
-//
-//              }
-//              // u0_dbg_printf(" the buffer size is %i ", sizeof(buffer));
-//
-//          }
-//
-//          // terminate
-//          fclose(mpFile);
-//          free(mp3_buffer);
-//
-//      }
-//
-//   } //add by Khiem
-//
-//      return true;
-//  }
-//};
-
 //Add interrupr by Khiem
 
 LabGPIOInterrupt GPIOInt_instance;
 
-void eint3_IRQHandle(void) //Handle Interrupt
+void eint3_IRQHandle(void)            //Handle Interrupt
 {
     GPIOInt_instance.handle_interrupt();
 }
 
 void callback_from_interrupt(void) //Call back function from interrupt
 {
-
     long yield = 0;
     {
         xSemaphoreGiveFromISR(resumeButtonSemaphore, &yield);
         if (yield) {
             u0_dbg_printf("YIELD from ISR\n");
-
             portYIELD_FROM_ISR(yield);
         }
     }
 
 }
-
-//Add by Khiem another sendMusic task
-
-//class sendMusic : public scheduler_task
-
-//{
-//    public:
-//        sendMusic(uint8_t priority): scheduler_task("sendMusicTask", 2000, priority){}
-//        bool init(void){
-//            return true;
-//        }
-//
-//        bool run(void *p)
-//        {
-//              if  ( xSemaphoreTake(resumeButtonSemaphore, portMAX_DELAY))
-//              {
-////                long int lSize;
-////                        char mp3_buffer[512];
-////                        FILE * mpFile;
-////                        int i, y = 0;
-////                        char prefix[] = "1:";
-////                        char* songName = musicList[currentSong];
-////                        char* fileName = (char*) malloc(strlen(prefix) + strlen(songName) + 1);
-////                        strcpy(fileName, prefix);
-////                        strcat(fileName, songName);
-////
-////                        mpFile = fopen(fileName, "r");
-////                        if (!mpFile)        // to make sure the file is open success
-////                        {
-////                            fputs("File error", stderr);
-////                            exit(1);
-////                        }
-//////                      fseek(mpFile, 0, SEEK_END);    // obtain file size:
-//////                      lSize = ftell(mpFile);     // get the pointer of the file
-//////                      rewind(mpFile);             // go the begining of the file
-////
-////                        if (mp3_buffer == NULL) {
-////                            printf("mp3 data memory allocate fail");
-////                            exit(1);
-////                        }
-////                        u0_dbg_printf("mo dc file trong sendMusic%s\n",mpFile);
-////                        u0_dbg_printf("current song=%s\n",musicList[currentSong]);
-////                     xQueueSend(getSharedObject(song_queue), &mpFile,portMAX_DELAY);//add by Khiem
-////                    fclose(mpFile);
-////                    free(mp3_buffer);
-////                }
-////
-//              }
-//        }
-//
-//};
 
 ///Add on Stanley code
 
@@ -1097,22 +791,11 @@ public:
 
     bool run(void *p)
     {
-//        DIR musicDir;
-        FATFS *fs;
-        FILINFO Finfo;
+
         FRESULT returnCode = FR_OK;
-//        const char *dirPath = "1:Music";
-//        if (FR_OK != (returnCode = f_opendir(&musicDir, dirPath))) {
-//            u0_dbg_printf("Invalid directory: |%s| (Error %i)\n", dirPath, returnCode);
-//            return true;
-//        }
-        // u0_dbg_printf("%s\n",musicList[1]);
-        //f_readdir(&musicDir, &Finfo);
-        //u0_dbg_printf("%s\n",Finfo.lfname);
 
         xSemaphoreTake(resumeButtonSemaphore, portMAX_DELAY);
 
-//EasyFind
         char prefix[] = "1:Music/";
         char* songName = musicList[currentSong];
 
@@ -1121,18 +804,16 @@ public:
         strcpy(fileName, prefix);
         strcat(fileName, songName);
 
-        u0_dbg_printf("File Location: %s\n",fileName);
+        u0_dbg_printf("File Location: %s\n", fileName);
         FIL file;
-       if(FR_OK != (returnCode = f_open(&file,fileName, FA_READ))){
-           u0_dbg_printf("File Error %i",returnCode);
-       }
-//        if (file == NULL) return true;
+        if (FR_OK != (returnCode = f_open(&file, fileName, FA_READ))) {
+            u0_dbg_printf("File Error %i", returnCode);
+        }
 
-        //get filesize
         f_lseek(&file, 0);
         int fileSize = f_size(&file);
         f_lseek(&file, 0);
-        u0_dbg_printf("size: %i\n",fileSize);
+        u0_dbg_printf("size: %i\n", fileSize);
 
         //read in chunks of 512 bytes and send to queue
         musicBlock_t m;
@@ -1142,15 +823,14 @@ public:
 //            UINT bytesRead = 0;
             m.file = &file;
             m.fileSize = fileSize;
-           // u0_dbg_printf("size: %i\n",m.fileSize);
+            // u0_dbg_printf("size: %i\n",m.fileSize);
             m.position = 0;
-            f_read(m.file,m.data, BLOCK_SIZE,&m.position);
+            f_read(m.file, m.data, BLOCK_SIZE, &m.position);
 
             //fread();
             mPtr = &m;
             xQueueSend(getSharedObject(song_queue), &mPtr, portMAX_DELAY);
-            //u0_dbg_printf("Attempting to read file");
-            if(musicList[currentSong] != songName){
+            if (musicList[currentSong] != songName) {
                 break;
             }
         }
@@ -1184,30 +864,30 @@ public:
     void SPI0_Init()        //done in lab lecture
     {
         LPC_SC->PCONP |= (1 << 21);     // SPI0 Power Enable
-        LPC_SC->PCLKSEL1 &= ~(3 << 10); // Clear clock Bits
-        LPC_SC->PCLKSEL1 |= (1 << 10); // 01: CLK / 1. ||  00: /4    || 10: /2
+        LPC_SC->PCLKSEL1 &= ~(3 << 10);     // Clear clock Bits
+        LPC_SC->PCLKSEL1 |= (1 << 10);     // 01: CLK / 1. ||  00: /4    || 10: /2
         // Select MISO, MOSI, and SCK pin-select functionality
-        LPC_PINCON->PINSEL0 &= ~((3 << 30));                   // clear the sck0
-        LPC_PINCON->PINSEL1 &= ~((3 << 2) | (3 << 4)); //  clear the miso0 and mosi0
-        LPC_PINCON->PINSEL0 |= (2 << 30);       // set set the function for sck0
-        LPC_PINCON->PINSEL1 |= ((2 << 2) | (2 << 4)); //and then set the function respectively
-        LPC_SSP0->CR0 = 7;          // 8-bit mode
-        LPC_SSP0->CR1 = (1 << 1);   // Enable SSP as Master
-        LPC_SSP0->CPSR = 1;         // SCK speed = CPU / 1
-        LPC_SSP0->CR1 &= ~(1 << 2); // to set the spi1 as master
+        LPC_PINCON->PINSEL0 &= ~((3 << 30));            // clear the sck0
+        LPC_PINCON->PINSEL1 &= ~((3 << 2) | (3 << 4));            //  clear the miso0 and mosi0
+        LPC_PINCON->PINSEL0 |= (2 << 30);            // set set the function for sck0
+        LPC_PINCON->PINSEL1 |= ((2 << 2) | (2 << 4));            //and then set the function respectively
+        LPC_SSP0->CR0 = 7;            // 8-bit mode
+        LPC_SSP0->CR1 = (1 << 1);            // Enable SSP as Master
+        LPC_SSP0->CPSR = 1;            // SCK speed = CPU / 1
+        LPC_SSP0->CR1 &= ~(1 << 2);            // to set the spi1 as master
         // gpio initlization, configure the pin as gpio first
-        LPC_PINCON->PINSEL3 &= ~(3 << 12);      // set p1.22 as gpio
-        LPC_PINCON->PINSEL3 &= ~(3 << 24);      // set p1.28 as gpio
-        LPC_PINCON->PINSEL3 &= ~(3 << 28);      //set p1.30  as gpio
-        LPC_PINCON->PINSEL3 &= ~(3 << 6);      //set p1.19  as gpio
+        LPC_PINCON->PINSEL3 &= ~(3 << 12);            // set p1.22 as gpio
+        LPC_PINCON->PINSEL3 &= ~(3 << 24);            // set p1.28 as gpio
+        LPC_PINCON->PINSEL3 &= ~(3 << 28);            //set p1.30  as gpio
+        LPC_PINCON->PINSEL3 &= ~(3 << 6);            //set p1.19  as gpio
         //   LPC_PINCON->PINSEL0 &= ~(3 << 0);           // this is for sd car, dont real need it
-        LPC_GPIO1->FIODIR |= (1 << 22);   //set pin P1.22 as output -- CS signal
-        LPC_GPIO1->FIODIR |= (1 << 28); //set pin P1.28 as output -- RESET signal
-        LPC_GPIO1->FIODIR |= (1 << 30);  //set pin P1.30 as output -- DCS signal
-        LPC_GPIO1->FIODIR &= ~(1 << 19); //set pin P1.19 as input -- DREQ signal
-        LPC_GPIO1->FIOSET = (1 << 28);    //set pin P1.28 high initially
-        LPC_GPIO1->FIOSET = (1 << 30);    //set pin P1.30 high initially
-        LPC_GPIO1->FIOSET = (1 << 22);    //set pin P1.22 high initially
+        LPC_GPIO1->FIODIR |= (1 << 22);            //set pin P1.22 as output -- CS signal
+        LPC_GPIO1->FIODIR |= (1 << 28);            //set pin P1.28 as output -- RESET signal
+        LPC_GPIO1->FIODIR |= (1 << 30);            //set pin P1.30 as output -- DCS signal
+        LPC_GPIO1->FIODIR &= ~(1 << 19);            //set pin P1.19 as input -- DREQ signal
+        LPC_GPIO1->FIOSET = (1 << 28);            //set pin P1.28 high initially
+        LPC_GPIO1->FIOSET = (1 << 30);            //set pin P1.30 high initially
+        LPC_GPIO1->FIOSET = (1 << 22);            //set pin P1.22 high initially
         // ssp0_set_max_clock(1);
     }
     uint8_t sendDataToRegister(uint8_t data)
@@ -1234,16 +914,16 @@ public:
     {
         while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
             ; //0 = not ready, wait till ready
-        setCS();      //Send Low on CS to enable VS1053, active low
-        sendDataToRegister(0x3);         //Send Read Opcode
-        sendDataToRegister(readReg);      //Send Address to read from
+        setCS(); //Send Low on CS to enable VS1053, active low
+        sendDataToRegister(0x3); //Send Read Opcode
+        sendDataToRegister(readReg); //Send Address to read from
         char firstByte = sendDataToRegister(0x99);
         while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
             ;
         char secondByte = sendDataToRegister(0x98);
         while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
             ;
-        resetCS();     //Send High on CS to disable VS1053
+        resetCS(); //Send High on CS to disable VS1053
         uint16_t data = firstByte << 8;
         data = data | secondByte;
         return data;
@@ -1277,17 +957,17 @@ public:
         uint8_t highByteData = data >> 8;
         // lowByteData = (uint8_t)data;        // to get the low byte of data
         // highByteData = (uint8_t)(data>>8);  //to get the high byte of data
-        resetDataCS();          // set the pin to high
-        setCS();             //enable the chip select, the cs is active low
+        resetDataCS();            // set the pin to high
+        setCS();            //enable the chip select, the cs is active low
         while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
             ;
-        sendDataToRegister(0x02); //send the opcode fist, this is operation of write data
-        sendDataToRegister(address);             // send the address
+        sendDataToRegister(0x02);            //send the opcode fist, this is operation of write data
+        sendDataToRegister(address);            // send the address
         sendDataToRegister(highByteData);
         sendDataToRegister(lowByteData);
         //setDataCS();
         while (!(LPC_GPIO1->FIOPIN & (1 << 19)))
-            ; // wait unitl the dreq is low
+            ;            // wait unitl the dreq is low
         resetCS();
     }
     void setVolum(uint8_t volumnData)
@@ -1298,10 +978,10 @@ public:
     void mp3_SDI_Write_32(char *data)
     {
         resetCS();       //disable CS
-        setDataCS();     //enable DCS
+        setDataCS();       //enable DCS
         while (dreqStatus() == 0)
-            ;  //wait until DREQ pin goes high
-        //    ssp0_exchange_byte(0x00);
+            ;       //wait until DREQ pin goes high
+                    //    ssp0_exchange_byte(0x00);
         for (int i = 0; i < 32; i++) {
             ssp0_exchange_byte(data[i]);
         }
@@ -1416,7 +1096,7 @@ int main(void)
     resumeButtonSemaphore = xSemaphoreCreateMutex();
     scrollDown = xSemaphoreCreateBinary();
     Select = xSemaphoreCreateBinary();
-    //scheduler_add_task(new terminalTask(PRIORITY_HIGH));
+    scheduler_add_task(new terminalTask(PRIORITY_HIGH));
     /* Consumes very little CPU, but need highest priority to handle mesh network ACKs */
     //  scheduler_add_task(new wirelessTask(PRIORITY_CRITICAL));
     scheduler_add_task(new mp3Project(2));
@@ -1430,12 +1110,11 @@ int main(void)
 //    GPIOInt_instance.attachInterruptHandler(2, 1, callback_from_interrupt, both_edge);    //port2.1
 //    isr_register(EINT3_IRQn, eint3_IRQHandle);
 
-//    scheduler_add_task(new terminalTask(PRIORITY_MEDIUM));
     scheduler_add_task(new uart_display(4));
 
     //xTaskCreate((TaskFunction_t )buttonScroll, "Button Interrupt", 100, NULL, 1, NULL);
 
-    scheduler_start(); //< This shouldn't return
+    scheduler_start();        //< This shouldn't return
     //vTaskStartScheduler();
 
     return -1;
