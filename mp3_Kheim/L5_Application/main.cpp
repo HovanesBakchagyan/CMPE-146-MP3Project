@@ -90,17 +90,14 @@ int numberOfSongs = 0;
 uint8_t currentSong = 0;
 int checkSong = 0;
 uint8_t currentVolumn = 50;       //0 is max, fffe is muted
+uint8_t currentBass = 10; //Add by Khiem on 05/21/18
 uint8_t volumnDisplay = 9;
 bool pausedFlag = true;     // the pausedFlage is used to display the lcd status
 bool reStartFlag = false;
 
 typedef enum {
-	invalid = 1, left = 2, right = 3
-} orientation_t;
-orientation_t orien;
-
-typedef enum {
-	volumnQueue, song_queue, tilt_queue //Add by Khiem
+	volumnQueue, song_queue, tilt_queue,  //Add by Khiem
+	bassQueue  //add on 05/21/2018
 } sharedHandleId_t;
 
 //MP3 decoder interface
@@ -122,7 +119,7 @@ bool getSongNames() {
 	char Lfname[_MAX_LFN];
 	int order = 0;
 
-	const char *dirPath = "1:Music";
+	const char *dirPath = "1:";
 	if (FR_OK != (returnCode = f_opendir(&Dir, dirPath))) {
 		printf("Invalid directory: |%s| (Error %i)\n", dirPath, returnCode);
 		return true;
@@ -161,7 +158,13 @@ public:
 			scheduler_task("Songs Display", 2000, priority) {
 	}
 	typedef enum {
-		Startup, initialdisplay, flashFirst, flashSecond, goingUp, goingDown,endList
+		Startup,
+		initialdisplay,
+		flashFirst,
+		flashSecond,
+		goingUp,
+		goingDown,
+		endList
 	} songDisplayState;
 
 	bool U2_init(int baud) {
@@ -276,10 +279,9 @@ public:
 		;
 		for (int i = 0; i < 16; i++) {
 
+			U2_Tx(listend[i]); //send values in array one at a time
 
-				U2_Tx(listend[i]); //send values in array one at a time
-
-			}
+		}
 
 		stopText()
 		;
@@ -289,7 +291,7 @@ public:
 	void sendLine(char* song) {
 		//char listend[13] = { "End Of List " };
 
-		if (currentSong<numberOfSongs) {
+		if (currentSong < numberOfSongs) {
 			sendText()
 			;
 			for (int i = 0; i < 16; i++) {
@@ -343,7 +345,7 @@ public:
 		char* songPointer1;
 //        int songSelector = 0;
 		int listNum = currentSong;
-//        int count = 0;
+		int count = 0;
 		songDisplayState state = Startup;
 
 		vTaskDelay(5);
@@ -367,7 +369,8 @@ public:
 
 		songPointer1 = &musicList[listNum][0];
 		int tempVolume = currentVolumn;
-		char startupLine[13] = "MP3 Starting";
+		char startupLine[16] = "MP3 Starting";
+		char paused[16] = "PAUSED";
 		bool refreshAdd = false;
 //        sendLine(songPointer1);
 
@@ -393,108 +396,143 @@ public:
 					state = flashFirst;
 					break;
 
+				case flashFirst:
+					//                int temp = currentSong;
+					clearFirstLine();
+					if (refreshAdd) {
 
-                case flashFirst:
-                    //                int temp = currentSong;
-                    clearFirstLine();
-                    if (refreshAdd) {
+						listNum = currentSong + 1;
+						sendLine(musicList[listNum]);
+						refreshAdd = false;
+					}
 
-                        listNum = currentSong + 1;
-                        sendLine(musicList[listNum]);
-                        refreshAdd = false;
-                    }
-                    setCursorPosition(0, 0);
-                    slowStepLine(musicList[currentSong]);
+					setCursorPosition(0, 0);
+					if (pausedFlag) {
+						if (count < 5) {
+							if (count == 0) {
+								sendLine(paused);
+							}
+							vTaskDelay(200);
+							count = count + 1;
+						} else if (count < 10 && count >= 5) {
+							if (count == 5) {
+								sendLine(musicList[currentSong]);
+							}
+							vTaskDelay(200);
+							count = count + 1;
+						} else {
+							count = 0;
+						}
+					} else {
+						slowStepLine(musicList[currentSong]);
+					}
+					if ((currentSong % 2 == 1) && (currentSong > checkSong)) {
+						state = flashSecond;
+						refreshAdd = true;
+						checkSong++;
+						count = 0;
+					} else if ((currentSong % 2 == 1)
+							&& (currentSong < checkSong)) {
+						state = goingUp;
+						checkSong--;
+						count = 0;
+					}
 
-                    if ((currentSong % 2 == 1) && (currentSong > checkSong)) {
-                        state = flashSecond;
-                        refreshAdd = true;
-                        checkSong++;
-                    }
-                    else if ((currentSong % 2 == 1) && (currentSong < checkSong)) {
-                        state = goingUp;
-                        checkSong--;
-                    }
+					break;
 
-                    break;
+				case flashSecond:
 
-                case flashSecond:
-
-                    clearSecondLine();
-                    if (refreshAdd) {
-                        setCursorPosition(0, 0);
-                        listNum = currentSong - 1;
-                        sendLine(musicList[listNum]);
-                        refreshAdd = false;
-                    }
-                    else {
-                        setCursorPosition(0, 1);
-                    }
-                    slowStepLine(musicList[currentSong]);
+					clearSecondLine();
+					if (refreshAdd) {
+						setCursorPosition(0, 0);
+						listNum = currentSong - 1;
+						sendLine(musicList[listNum]);
+						refreshAdd = false;
+					} else {
+						setCursorPosition(0, 1);
+					}
+					if (pausedFlag) {
+						if (count < 5) {
+							if (count == 0) {
+								sendLine(paused);
+							}
+							vTaskDelay(200);
+							count = count + 1;
+						} else if (count < 10 && count >= 5) {
+							if(count == 5){
+							sendLine(musicList[currentSong]);
+							}
+							vTaskDelay(200);
+							count = count + 1;
+						} else {
+							count = 0;
+						}
+					} else {
+						slowStepLine(musicList[currentSong]);
+					}
 //                           u0_dbg_printf("stepping second song\n");
 
-                    if ((currentSong % 2 == 0) && (currentSong > checkSong)) {
-                        state = goingDown;
-                        checkSong = currentSong;
-                    }
-                    else if ((currentSong % 2 == 0) && (currentSong < checkSong)) {
-                        state = flashFirst;
-                        refreshAdd = true;
-                        checkSong--;
-                    }
-                    break;
+					if ((currentSong % 2 == 0) && (currentSong > checkSong)) {
+						state = goingDown;
+						checkSong = currentSong;
+						count = 0;
+					} else if ((currentSong % 2 == 0)
+							&& (currentSong < checkSong)) {
+						state = flashFirst;
+						refreshAdd = true;
+						checkSong--;
+						count = 0;
+					}
+					break;
 
-                case goingDown:
-                    if (currentSong < numberOfSongs) {
-                    	setCursorPosition(0,0);
-                        listNum = currentSong;
-                        songPointer0 = &musicList[listNum][0];
-                        sendLine(songPointer0);
-                        // u0_dbg_printf("%s\n", songPointer0);
-                    }
-                    else {
-                        state = endList;
-                        break;
-                    }
-                    listNum++;
-                    setCursorPosition(0,1);
-                    if (currentSong < numberOfSongs) {
+				case goingDown:
+					if (currentSong < numberOfSongs) {
+						setCursorPosition(0, 0);
+						listNum = currentSong;
+						songPointer0 = &musicList[listNum][0];
+						sendLine(songPointer0);
+						// u0_dbg_printf("%s\n", songPointer0);
+					} else {
+						state = endList;
+						break;
+					}
+					listNum++;
+					setCursorPosition(0, 1);
+					if (currentSong < numberOfSongs) {
 
-                        songPointer1 = &musicList[listNum][0];
-                        sendLine(songPointer1);
-                    }
-                    else {
-                        state = endList;
-                        break;
-                    }
-                    state = flashFirst;
-                    break;
+						songPointer1 = &musicList[listNum][0];
+						sendLine(songPointer1);
+					} else {
+						state = endList;
+						break;
+					}
+					state = flashFirst;
+					break;
 
-                case goingUp:
-                    if (currentSong > 0) {
-                    	setCursorPosition(0,0);
-                        listNum = currentSong - 1;
-                        songPointer0 = &musicList[listNum][0];
-                        sendLine(songPointer0);
+				case goingUp:
+					if (currentSong > 0) {
+						setCursorPosition(0, 0);
+						listNum = currentSong - 1;
+						songPointer0 = &musicList[listNum][0];
+						sendLine(songPointer0);
 //                            u0_dbg_printf("%s\n", songPointer0);
-                    }
-                    listNum++;
-                    songPointer1 = &musicList[listNum][0];
-                    sendLine(songPointer1);
-                    //u0_dbg_printf("%s\n", songPointer1);
-                    state = flashSecond;
-                    break;
+					}
+					listNum++;
+					songPointer1 = &musicList[listNum][0];
+					sendLine(songPointer1);
+					//u0_dbg_printf("%s\n", songPointer1);
+					state = flashSecond;
+					break;
 
-                case endList:
-                    clearSecondLine();
-                    sendEnd();
-                    if ((currentSong % 2 == 1) && (currentSong < checkSong)) {
-                        state = goingUp;
-                        checkSong--;
-                    }
-                    vTaskDelay(200);
-                    break;
-
+				case endList:
+					clearSecondLine();
+					sendEnd();
+					if ((currentSong % 2 == 1) && (currentSong < checkSong)) {
+						state = goingUp;
+						checkSong--;
+					}
+					vTaskDelay(200);
+					break;
 
 				}
 			} else {
@@ -557,8 +595,7 @@ public:
 		return -1;
 
 	}
-}
-;
+};
 
 SemaphoreHandle_t resumeButtonSemaphore = NULL;
 SemaphoreHandle_t displayScreenSemaphore = NULL;
@@ -573,9 +610,9 @@ public:
 		//Add by Khiem
 		addSharedObject(song_queue, mysongQueue);
 
-		//add extra feature by Khiem
-		QueueHandle_t q = xQueueCreate(1, sizeof(orientation_t));
-		addSharedObject(tilt_queue, q);
+		//add extra feature by Khiem on 05/21/2018
+		QueueHandle_t q = xQueueCreate(1, sizeof(int));
+		addSharedObject(bassQueue, q);
 	}
 
 	void PauseMusic() {
@@ -585,7 +622,7 @@ public:
 		scheduler_task *musicTask = scheduler_task::getTaskPtrByName(
 				"musicPlayer");
 		vTaskSuspend(musicTask->getTaskHandle());
-
+		pausedFlag = true;
 //        scheduler_task *LcdTask = scheduler_task::getTaskPtrByName("LcdDisplay");
 //        vTaskResume(LcdTask->getTaskHandle());
 //         xSemaphoreGiveFromISR(displayScreenSemaphore, &pauseSem);
@@ -612,7 +649,7 @@ public:
 	void startMusic() {
 		//  reStartFlag = false;
 
-		// pausedFlag = false;
+		pausedFlag = false;
 
 		scheduler_task *Musictask = scheduler_task::getTaskPtrByName(
 				"musicPlayer");
@@ -648,20 +685,43 @@ public:
 
 	void volumnUp() {
 		printf("Current volumn is: %d", currentVolumn);
-		if(currentVolumn > 0){
-		currentVolumn = currentVolumn - 5;
+		if (currentVolumn > 0) {
+			currentVolumn = currentVolumn - 5;
 		}  //0 is max volumn
 		xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
 	}
 
 	void volumnDown() {
 		printf("Current volumn is: %d", currentVolumn);
-		if(currentVolumn <100)
-		currentVolumn = currentVolumn + 5;      // + volumn is to silence
+		if (currentVolumn < 100)
+			currentVolumn = currentVolumn + 5;      // + volumn is to silence
 		xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
 
 	}
 
+	void bassUp() {
+
+		if (currentBass >= 0 && currentBass < 15) {
+			printf("Current base is: %d", currentBass);
+			currentBass = currentBass + 1;
+
+		} else if (currentBass >= 15) {
+			printf("Current base is: %d", currentBass);
+			currentBass = 15;
+		}
+
+		xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
+	}
+
+	void bassDown() {
+
+		if (currentBass >= 0) {
+			printf("Current base is: %d", currentBass);
+			currentBass = currentBass - 1;      // + volumn is to silence
+		}
+		xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
+
+	}
 	bool init(void) {
 		//configure the pin p0.0. p0.1 as gpio
 		LPC_PINCON->PINSEL0 &= ~(3 << 0);   // set the pin p0.0 as gpio
@@ -687,6 +747,9 @@ public:
 //        displayScreenSemaphore = xSemaphoreCreateBinary();
 		xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
 		//upDataSongNameList();
+
+		//add on by Khiem on 05/21/2018
+		xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
 		return true;
 	}
 //    bool nextSongSensor(){      // accessration sensor use to play next song and previous song
@@ -733,11 +796,11 @@ public:
 		}
 
 		else if (SW.getSwitch(2)) {  //Button 2 for pause the music
-			PauseMusic();
+			bassUp();
 		}
 		else if(SW.getSwitch(3))
 		{
-			volumnUp();
+			bassDown();
 		}
 		else if(SW.getSwitch(1)) {
 			startMusic();
@@ -785,6 +848,7 @@ public:
 		}
 
 		vTaskDelay(100);
+
 		return true;
 	}
 };
@@ -809,8 +873,6 @@ void callback_from_interrupt(void) //Call back function from interrupt
 
 }
 
-///Add on Stanley code
-
 class sendMusic: public scheduler_task {
 public:
 	sendMusic(uint8_t priority) :
@@ -826,7 +888,7 @@ public:
 
 		xSemaphoreTake(resumeButtonSemaphore, portMAX_DELAY);
 
-		char prefix[] = "1:Music/";
+		char prefix[] = "1:\\";
 		char* songName = musicList[currentSong];
 
 		u0_dbg_printf("currently playing:  %i: %s\n", currentSong, songName);
@@ -865,6 +927,7 @@ public:
 				break;
 			}
 		}
+
 		f_close(&file);
 
 		return true;
@@ -880,6 +943,7 @@ public:
 	bool init(void) {
 		SPI0_Init();
 		writeRegister(SCI_MODE, 0x0800);
+//		writeRegister(SCI_BASS, 0x7A00);
 		writeRegister(SCI_BASS, 0x7A00);
 		writeRegister(SCI_CLOCKF, 0x2000);
 		writeRegister(SCI_AUDATA, 0xAC45);
@@ -887,6 +951,7 @@ public:
 		//  writeRegister(SCI_AUDATA, 0xAC45);
 		//   setClock(0x2000);
 		setVolum(100);
+//		setBass(10);
 		ssp0_set_max_clock(1);
 		return true;
 	}
@@ -1003,9 +1068,36 @@ public:
 			ssp0_exchange_byte(data[i]);
 		}
 		resetDataCS();    //disable DCS
+
 	}
 	// bool updataSong() {}
 
+//	void setBass(uint8_t bassData) {
+////		uint16_t bass16Bit = (bassData << 8) | bassData;
+//		uint16_t bass16Bit = (currentBass<<4) | bassData;
+//		writeRegister(SCI_BASS, bass16Bit);
+//	}
+
+	void set_bass(uint8_t bfreq, uint8_t bass, uint8_t tfreq, uint8_t treble) {
+		uint16_t setBass = 0;
+		unsigned char temp = 0;
+		if (treble == 0) {
+			temp = 0;
+		} else if (treble > 8) {
+			temp = treble - 8;
+		} else {
+			temp = treble - 9;
+		}
+
+		setBass = temp & 0x0F;
+		setBass = setBass << 4;
+		setBass += tfreq & 0xF;
+		setBass = setBass << 4;
+		setBass += bass & 0xF;
+		setBass = setBass << 4;
+		setBass += bfreq & 0xF;
+		writeRegister(SCI_BASS, setBass);
+	}
 	bool run(void *p) {
 
 		/* We first get the queue handle the other task added using addSharedObject() */
@@ -1014,7 +1106,11 @@ public:
 
 		uint16_t volumnChange;
 		QueueHandle_t volumControl = getSharedObject(volumnQueue);
-		//wait for queue to be not empty
+
+		//Add on 05/21/2018 to implement the bass by Khiem
+//		uint16_t bassChange;
+		uint8_t bassChange;
+		QueueHandle_t bassControl = getSharedObject(bassQueue);
 
 		while (xQueueReceive(qid, &data, portMAX_DELAY)) {
 
@@ -1026,6 +1122,10 @@ public:
 					if (xQueueReceive(volumControl, &volumnChange, 15)) {
 						setVolum(volumnChange);
 					}
+					if (xQueueReceive(bassControl, &bassChange, 15)) {
+//						setBass(bassChange);
+						set_bass(5, bassChange, 5, 20);
+					}
 				}
 				//check dreq every 32 bytes
 				resetCS();
@@ -1036,7 +1136,7 @@ public:
 					z++;
 				}
 				resetDataCS();
-//
+
 			}
 
 		}
@@ -1107,10 +1207,10 @@ int main(void) {
 	scheduler_add_task(new tiltControl(1));
 	GPIOInt_instance.init();
 	GPIOInt_instance.attachInterruptHandler(0, 0, callback_from_interrupt,
-			raising_edge);    //port 0.0
+			both_edge);    //port 0.0 interrupt enable for both edges
 	isr_register(EINT3_IRQn, eint3_IRQHandle);
 	GPIOInt_instance.attachInterruptHandler(2, 1, callback_from_interrupt,
-			both_edge);    //port2.1
+			both_edge);    //port2.1 interrupt enable for both edges
 	isr_register(EINT3_IRQn, eint3_IRQHandle);
 
 	scheduler_add_task(new display_songs(3));
