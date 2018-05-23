@@ -409,149 +409,153 @@ public:
 					setCursorPosition(0, 0);
 					if (pausedFlag) {
 						if (count < 5) {
-							if (count == 0) {
-								sendLine(paused);
-							}
-							vTaskDelay(200);
-							count = count + 1;
-						} else if (count < 10 && count >= 5) {
-							if (count == 5) {
-								sendLine(musicList[currentSong]);
-							}
-							vTaskDelay(200);
-							count = count + 1;
-						} else {
-							count = 0;
-						}
-					} else {
-						slowStepLine(musicList[currentSong]);
-					}
-					if ((currentSong % 2 == 1) && (currentSong > checkSong)) {
-						state = flashSecond;
-						refreshAdd = true;
-						checkSong++;
-						count = 0;
-					} else if ((currentSong % 2 == 1)
-							&& (currentSong < checkSong)) {
-						state = goingUp;
-						checkSong--;
-						count = 0;
-					}
 
-					break;
+							sendLine(paused);
+
+							vTaskDelay(200);
+
+						count = count + 1;
+					} else if (count < 10 && count >= 5) {
+
+							sendLine(musicList[currentSong]);
+
+							vTaskDelay(200);
+
+						count = count + 1;
+					} else {
+						count = 0;
+					}
+				}
+				else {
+					slowStepLine(musicList[currentSong]);
+				}
+				if ((currentSong % 2 == 1) && (currentSong > checkSong)) {
+					state = flashSecond;
+					refreshAdd = true;
+					checkSong++;
+					count = 0;
+				} else if ((currentSong % 2 == 1)
+						&& (currentSong < checkSong)) {
+					state = goingUp;
+					checkSong--;
+					count = 0;
+				}
+
+				break;
 
 				case flashSecond:
 
-					clearSecondLine();
-					if (refreshAdd) {
-						setCursorPosition(0, 0);
-						listNum = currentSong - 1;
-						sendLine(musicList[listNum]);
-						refreshAdd = false;
-					} else {
-						setCursorPosition(0, 1);
-					}
-					if (pausedFlag) {
-						if (count < 5) {
-							if (count == 0) {
-								sendLine(paused);
-							}
-							vTaskDelay(200);
-							count = count + 1;
-						} else if (count < 10 && count >= 5) {
-							if(count == 5){
+				clearSecondLine();
+				if (refreshAdd) {
+					setCursorPosition(0, 0);
+					listNum = currentSong - 1;
+					sendLine(musicList[listNum]);
+					refreshAdd = false;
+				} else {
+					setCursorPosition(0, 1);
+				}
+				if (pausedFlag) {
+					if (count < 5) {
+
+							sendLine(paused);
+
+						vTaskDelay(200);
+						count = count + 1;
+					} else if (count < 10 && count >= 5) {
+
 							sendLine(musicList[currentSong]);
-							}
-							vTaskDelay(200);
-							count = count + 1;
-						} else {
-							count = 0;
-						}
+
+						vTaskDelay(200);
+						count = count + 1;
 					} else {
-						slowStepLine(musicList[currentSong]);
+						count = 0;
 					}
+				} else {
+					slowStepLine(musicList[currentSong]);
+				}
 //                           u0_dbg_printf("stepping second song\n");
 
-					if ((currentSong % 2 == 0) && (currentSong > checkSong)) {
-						state = goingDown;
-						checkSong = currentSong;
-						count = 0;
-					} else if ((currentSong % 2 == 0)
-							&& (currentSong < checkSong)) {
-						state = flashFirst;
-						refreshAdd = true;
-						checkSong--;
-						count = 0;
-					}
-					break;
+				if ((currentSong % 2 == 0) && (currentSong > checkSong)) {
+					state = goingDown;
+					checkSong = currentSong;
+					count = 0;
+				} else if ((currentSong % 2 == 0)
+						&& (currentSong < checkSong)) {
+					state = flashFirst;
+					refreshAdd = true;
+					checkSong--;
+					count = 0;
+				}
+				break;
 
 				case goingDown:
-					if (currentSong < numberOfSongs) {
-						setCursorPosition(0, 0);
-						listNum = currentSong;
-						songPointer0 = &musicList[listNum][0];
-						sendLine(songPointer0);
-						// u0_dbg_printf("%s\n", songPointer0);
-					} else {
-						state = endList;
-						break;
-					}
-					listNum++;
-					setCursorPosition(0, 1);
-					if (currentSong < numberOfSongs) {
-
-						songPointer1 = &musicList[listNum][0];
-						sendLine(songPointer1);
-					} else {
-						state = endList;
-						break;
-					}
-					state = flashFirst;
+				if (currentSong < numberOfSongs) {
+					setCursorPosition(0, 0);
+					listNum = currentSong;
+					songPointer0 = &musicList[listNum][0];
+					sendLine(songPointer0);
+					// u0_dbg_printf("%s\n", songPointer0);
+				} else {
+					state = endList;
 					break;
+				}
+				listNum++;
+				setCursorPosition(0, 1);
+				if (currentSong < numberOfSongs) {
 
-				case goingUp:
-					if (currentSong > 0) {
-						setCursorPosition(0, 0);
-						listNum = currentSong - 1;
-						songPointer0 = &musicList[listNum][0];
-						sendLine(songPointer0);
-//                            u0_dbg_printf("%s\n", songPointer0);
-					}
-					listNum++;
 					songPointer1 = &musicList[listNum][0];
 					sendLine(songPointer1);
-					//u0_dbg_printf("%s\n", songPointer1);
-					state = flashSecond;
+				} else {
+					state = endList;
 					break;
+				}
+				state = flashFirst;
+				break;
+
+				case goingUp:
+				if (currentSong > 0) {
+					setCursorPosition(0, 0);
+					listNum = currentSong - 1;
+					songPointer0 = &musicList[listNum][0];
+					sendLine(songPointer0);
+//                            u0_dbg_printf("%s\n", songPointer0);
+				}
+				listNum++;
+				songPointer1 = &musicList[listNum][0];
+				sendLine(songPointer1);
+				//u0_dbg_printf("%s\n", songPointer1);
+				state = flashSecond;
+				break;
 
 				case endList:
-					clearSecondLine();
-					sendEnd();
-					if ((currentSong % 2 == 1) && (currentSong < checkSong)) {
-						state = goingUp;
-						checkSong--;
-					}
-					vTaskDelay(200);
-					break;
-
+				clearSecondLine();
+				sendEnd();
+				if ((currentSong % 2 == 1) && (currentSong < checkSong)) {
+					state = goingUp;
+					checkSong--;
 				}
-			} else {
-				clearLCD()
-				;
-				sprintf(fullLine, volLine, 100 - currentVolumn);
-				setCursorPosition(0, 0);
-				sendLine(fullLine);
-				tempVolume = currentVolumn;
-				for (int i = 0; i < 10; i++) {
-					if (currentVolumn != tempVolume) {
-						break;
-					} else {
-						vTaskDelay(100);
-					}
+				vTaskDelay(200);
+				break;
 
-				}
-				refreshAdd = true;
 			}
+		}
+	else {
+		clearLCD()
+		;
+		sprintf(fullLine, volLine, 100 - currentVolumn);
+		setCursorPosition(0, 0);
+		sendLine(fullLine);
+		tempVolume = currentVolumn;
+		for (int i = 0; i < 10; i++) {
+			if (currentVolumn != tempVolume) {
+				break;
+			} else {
+				vTaskDelay(100);
+			}
+
+		}
+		refreshAdd = true;
+	}
 //            while (step) {
 //
 //                songSelector = currentSong % 2;
@@ -591,10 +595,10 @@ public:
 //            u0_dbg_printf("%s\n", songPointer1);
 //            step = true;
 
-		}
-		return -1;
+}
+return -1;
 
-	}
+}
 };
 
 SemaphoreHandle_t resumeButtonSemaphore = NULL;
@@ -602,34 +606,33 @@ SemaphoreHandle_t displayScreenSemaphore = NULL;
 
 class controlPanel: public scheduler_task {
 public:
-	controlPanel(uint8_t priority) :
-			scheduler_task("controlPanel", 4096, priority) {
-		QueueHandle_t myVolumnQueue = xQueueCreate(3, sizeof(int));
-		addSharedObject(volumnQueue, myVolumnQueue);
+controlPanel(uint8_t priority) :
+		scheduler_task("controlPanel", 4096, priority) {
+	QueueHandle_t myVolumnQueue = xQueueCreate(3, sizeof(int));
+	addSharedObject(volumnQueue, myVolumnQueue);
 
-		//Add by Khiem
-		addSharedObject(song_queue, mysongQueue);
+	//Add by Khiem
+	addSharedObject(song_queue, mysongQueue);
 
-		//add extra feature by Khiem on 05/21/2018
-		QueueHandle_t q = xQueueCreate(1, sizeof(int));
-		addSharedObject(bassQueue, q);
-	}
+	//add extra feature by Khiem on 05/21/2018
+	QueueHandle_t q = xQueueCreate(1, sizeof(int));
+	addSharedObject(bassQueue, q);
+}
 
-	void PauseMusic() {
+void PauseMusic() {
 //		pausedFlag = true;
 //		reStartFlag = false;
-		//long pauseSem = 0;
-		scheduler_task *musicTask = scheduler_task::getTaskPtrByName(
-				"musicPlayer");
-		vTaskSuspend(musicTask->getTaskHandle());
-		pausedFlag = true;
+	//long pauseSem = 0;
+	scheduler_task *musicTask = scheduler_task::getTaskPtrByName("musicPlayer");
+	vTaskSuspend(musicTask->getTaskHandle());
+	pausedFlag = true;
 //        scheduler_task *LcdTask = scheduler_task::getTaskPtrByName("LcdDisplay");
 //        vTaskResume(LcdTask->getTaskHandle());
 //         xSemaphoreGiveFromISR(displayScreenSemaphore, &pauseSem);
 //        if(pauseSem){
 //            portYIELD_FROM_ISR(pauseSem);
 //        }
-	}
+}
 
 //	void ResumePlayMusic() {
 //		pausedFlag = false;
@@ -646,14 +649,13 @@ public:
 ////            portYIELD_FROM_ISR(startPlay);
 ////        }
 //	}
-	void startMusic() {
-		//  reStartFlag = false;
+void startMusic() {
+	//  reStartFlag = false;
 
-		pausedFlag = false;
+	pausedFlag = false;
 
-		scheduler_task *Musictask = scheduler_task::getTaskPtrByName(
-				"musicPlayer");
-		vTaskResume(Musictask->getTaskHandle());
+	scheduler_task *Musictask = scheduler_task::getTaskPtrByName("musicPlayer");
+	vTaskResume(Musictask->getTaskHandle());
 //		vTaskDelay(500);
 //        xQueueSend(getSharedObject(song_queue), &currentSong,0);//add by Khiem
 //      long startPlay = 0;
@@ -662,96 +664,96 @@ public:
 //      if (startPlay) {
 //          portYIELD_FROM_ISR(startPlay);
 //      }
+}
+void selectNextSong() {
+	if (currentSong <= numberOfSongs) {
+		currentSong++;
+		u0_dbg_printf("current song inc\n");
+	} else {
+		u0_dbg_printf("end of list\n");
 	}
-	void selectNextSong() {
-		if (currentSong <= numberOfSongs) {
-			currentSong++;
-			u0_dbg_printf("current song inc\n");
-		} else {
-			u0_dbg_printf("end of list\n");
-		}
-		vTaskDelay(200);
+	vTaskDelay(200);
 
-	}
+}
 
-	void selectPrevSong() {
-		if (currentSong <= 0)
-			printf("Invalid Song\n");
-		else
-			currentSong--;
-		vTaskDelay(200);
+void selectPrevSong() {
+	if (currentSong <= 0)
+		printf("Invalid Song\n");
+	else
+		currentSong--;
+	vTaskDelay(200);
 
-	}
+}
 
-	void volumnUp() {
-		printf("Current volumn is: %d", currentVolumn);
-		if (currentVolumn > 0) {
-			currentVolumn = currentVolumn - 5;
-		}  //0 is max volumn
-		xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
-	}
+void volumnUp() {
+	printf("Current volumn is: %d", currentVolumn);
+	if (currentVolumn > 0) {
+		currentVolumn = currentVolumn - 5;
+	}  //0 is max volumn
+	xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
+}
 
-	void volumnDown() {
-		printf("Current volumn is: %d", currentVolumn);
-		if (currentVolumn < 100)
-			currentVolumn = currentVolumn + 5;      // + volumn is to silence
-		xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
+void volumnDown() {
+	printf("Current volumn is: %d", currentVolumn);
+	if (currentVolumn < 100)
+		currentVolumn = currentVolumn + 5;      // + volumn is to silence
+	xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
 
-	}
+}
 
-	void bassUp() {
+void bassUp() {
 
-		if (currentBass >= 0 && currentBass < 15) {
-			printf("Current base is: %d", currentBass);
-			currentBass = currentBass + 1;
+	if (currentBass >= 0 && currentBass < 15) {
+		printf("Current base is: %d", currentBass);
+		currentBass = currentBass + 1;
 
-		} else if (currentBass >= 15) {
-			printf("Current base is: %d", currentBass);
-			currentBass = 15;
-		}
-
-		xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
+	} else if (currentBass >= 15) {
+		printf("Current base is: %d", currentBass);
+		currentBass = 15;
 	}
 
-	void bassDown() {
+	xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
+}
 
-		if (currentBass >= 0) {
-			printf("Current base is: %d", currentBass);
-			currentBass = currentBass - 1;      // + volumn is to silence
-		}
-		xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
+void bassDown() {
 
+	if (currentBass >= 0) {
+		printf("Current base is: %d", currentBass);
+		currentBass = currentBass - 1;      // + volumn is to silence
 	}
-	bool init(void) {
-		//configure the pin p0.0. p0.1 as gpio
-		LPC_PINCON->PINSEL0 &= ~(3 << 0);   // set the pin p0.0 as gpio
-		LPC_PINCON->PINSEL0 &= ~(3 << 2);   // set the pin p0.1 as gpio
+	xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
 
-		LPC_GPIO0->FIODIR &= ~(1 << 0); // set the port p0.0 as input
-		LPC_GPIO0->FIODIR &= ~(1 << 1); // set the port p0.1 as input
+}
+bool init(void) {
+	//configure the pin p0.0. p0.1 as gpio
+	LPC_PINCON->PINSEL0 &= ~(3 << 0);   // set the pin p0.0 as gpio
+	LPC_PINCON->PINSEL0 &= ~(3 << 2);   // set the pin p0.1 as gpio
 
-		LPC_PINCON->PINSEL4 &= ~(3 << 0);   // set the pin p2.0 as gpio
-		LPC_PINCON->PINSEL4 &= ~(3 << 2);   // set the pin p2.1 as gpio
-		LPC_PINCON->PINSEL4 &= ~(3 << 4);   // set the pin p2.2 as gpio
-		LPC_PINCON->PINSEL4 &= ~(3 << 6);   // set the pin p2.3 as gpio
+	LPC_GPIO0->FIODIR &= ~(1 << 0); // set the port p0.0 as input
+	LPC_GPIO0->FIODIR &= ~(1 << 1); // set the port p0.1 as input
 
-		LPC_GPIO2->FIODIR &= ~(1 << 0); // set the port p2.0 as input
-		LPC_GPIO2->FIODIR &= ~(1 << 1); // set the port p2.1 as input
-		LPC_GPIO2->FIODIR &= ~(1 << 2); // set the port p2.2 as input
-		LPC_GPIO2->FIODIR &= ~(1 << 3); // set the port p2.3 as input
-		//use to clear all the interrupts
-		LPC_GPIOINT->IO0IntClr = 0xFFFFFFFF;
+	LPC_PINCON->PINSEL4 &= ~(3 << 0);   // set the pin p2.0 as gpio
+	LPC_PINCON->PINSEL4 &= ~(3 << 2);   // set the pin p2.1 as gpio
+	LPC_PINCON->PINSEL4 &= ~(3 << 4);   // set the pin p2.2 as gpio
+	LPC_PINCON->PINSEL4 &= ~(3 << 6);   // set the pin p2.3 as gpio
+
+	LPC_GPIO2->FIODIR &= ~(1 << 0); // set the port p2.0 as input
+	LPC_GPIO2->FIODIR &= ~(1 << 1); // set the port p2.1 as input
+	LPC_GPIO2->FIODIR &= ~(1 << 2); // set the port p2.2 as input
+	LPC_GPIO2->FIODIR &= ~(1 << 3); // set the port p2.3 as input
+	//use to clear all the interrupts
+	LPC_GPIOINT->IO0IntClr = 0xFFFFFFFF;
 //      NVIC_EnableIRQ(EINT3_IRQn);
-		// isr_register(EINT3_IRQn, EINT3_IRQHandler);
-		resumeButtonSemaphore = xSemaphoreCreateBinary(); // to create the semaphore
+	// isr_register(EINT3_IRQn, EINT3_IRQHandler);
+	resumeButtonSemaphore = xSemaphoreCreateBinary(); // to create the semaphore
 //        displayScreenSemaphore = xSemaphoreCreateBinary();
-		xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
-		//upDataSongNameList();
+	xQueueSend(getSharedObject(volumnQueue), &currentVolumn, 100);
+	//upDataSongNameList();
 
-		//add on by Khiem on 05/21/2018
-		xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
-		return true;
-	}
+	//add on by Khiem on 05/21/2018
+	xQueueSend(getSharedObject(bassQueue), &currentBass, 100);
+	return true;
+}
 //    bool nextSongSensor(){      // accessration sensor use to play next song and previous song
 //        int tilt_x = AS.getX();
 //        if(tilt_x < -750){
@@ -776,36 +778,36 @@ public:
 // p2.0 to volumn down
 //p2.1 to volumn up
 
-	bool run(void *p) {
+bool run(void *p) {
 
-		if (SW.getSwitch(4)) {        // Button 1 for play and resume the music
+	if (SW.getSwitch(4)) {        // Button 1 for play and resume the music
 //            volumnDown();
 //          selectNextSong();
 //          long startPlay=0;
 //          xSemaphoreGiveFromISR(resumeButtonSemaphore, &startPlay);
 //          currentSong++;
 
-			//xSemaphoreGive(resumeButtonSemaphore);
-			selectNextSong();
+		//xSemaphoreGive(resumeButtonSemaphore);
+		selectNextSong();
 
 //                  if(startPlay)
 //                  {
 //                  portYIELD_FROM_ISR(startPlay);
 //                  }
 
-		}
+	}
 
-		else if (SW.getSwitch(2)) {  //Button 2 for pause the music
-			bassUp();
-		}
-		else if(SW.getSwitch(3))
-		{
-			bassDown();
-		}
-		else if(SW.getSwitch(1)) {
-			startMusic();
+	else if (SW.getSwitch(2)) {  //Button 2 for pause the music
+		bassUp();
+	}
+	else if(SW.getSwitch(3))
+	{
+		bassDown();
+	}
+	else if(SW.getSwitch(1)) {
+		startMusic();
 //            long startPlay = 0;
-			xSemaphoreGive(resumeButtonSemaphore);
+		xSemaphoreGive(resumeButtonSemaphore);
 
 //            xSemaphoreGiveFromISR(resumeButtonSemaphore, &startPlay);
 //            if (startPlay)
@@ -813,44 +815,44 @@ public:
 //                              portYIELD_FROM_ISR(startPlay);
 //                              }
 
-		}
-		else if((LPC_GPIO0->FIOPIN & (1 << 0))) { // p0.0 -->select the next song
-			selectNextSong();
-
-		}
-		else if(LPC_GPIO0->FIOPIN & (1 << 1)) { // p0.1--> select to previous song
-			volumnDown();
-			u0_dbg_printf("volume decreasing\n");
-
-		}
-		else if(LPC_GPIO2->FIOPIN & (1 << 0)) {  // p2.0, to set volumn up
-
-			volumnUp();
-			u0_dbg_printf("volume increasing\n");
-
-		}
-		else if((LPC_GPIO2->FIOPIN & (1 << 2))) {   // p2.2, to start music
-
-			startMusic();
-			u0_dbg_printf("start music\n");
-			xSemaphoreGive(resumeButtonSemaphore);
-
-		}
-		else if((LPC_GPIO2->FIOPIN & (1 << 3))) { // p2.3 -->select the next song
-			PauseMusic();
-
-		}
-		else if((LPC_GPIO2->FIOPIN & (1 << 1)))
-		{
-
-			selectPrevSong();
-
-		}
-
-		vTaskDelay(100);
-
-		return true;
 	}
+	else if((LPC_GPIO0->FIOPIN & (1 << 0))) { // p0.0 -->select the next song
+		selectNextSong();
+
+	}
+	else if(LPC_GPIO0->FIOPIN & (1 << 1)) { // p0.1--> select to previous song
+		volumnDown();
+		u0_dbg_printf("volume decreasing\n");
+
+	}
+	else if(LPC_GPIO2->FIOPIN & (1 << 0)) {  // p2.0, to set volumn up
+
+		volumnUp();
+		u0_dbg_printf("volume increasing\n");
+
+	}
+	else if((LPC_GPIO2->FIOPIN & (1 << 2))) {   // p2.2, to start music
+
+		startMusic();
+		u0_dbg_printf("start music\n");
+		xSemaphoreGive(resumeButtonSemaphore);
+
+	}
+	else if((LPC_GPIO2->FIOPIN & (1 << 3))) { // p2.3 -->select the next song
+		PauseMusic();
+
+	}
+	else if((LPC_GPIO2->FIOPIN & (1 << 1)))
+	{
+
+		selectPrevSong();
+
+	}
+
+	vTaskDelay(100);
+
+	return true;
+}
 };
 
 //Add interrupr by Khiem
